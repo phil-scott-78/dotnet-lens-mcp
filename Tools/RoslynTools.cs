@@ -3,6 +3,7 @@ using ModelContextProtocol.Server;
 using RoslynMcp.Services;
 using System.ComponentModel;
 using RoslynMcp.Services.SerializerExtensions;
+using RoslynMcp.Models.Responses;
 
 namespace RoslynMcp.Tools;
 
@@ -22,24 +23,24 @@ public class RoslynTools(
             var workspace = await roslynService.InitializeWorkspaceAsync(workingDirectory, preferredSolution);
 
             
-            return new
+            return new InitializeWorkspaceResponse
             {
-                success = true,
-                data = new
+                Success = true,
+                Data = new InitializeWorkspaceData
                 {
-                    primarySolution = workspace.PrimarySolution != null ? new
+                    PrimarySolution = workspace.PrimarySolution != null ? new SolutionInfo
                     {
-                        path = workspace.PrimarySolution.Path,
-                        name = workspace.PrimarySolution.Name,
-                        projectCount = workspace.PrimarySolution.ProjectCount
+                        Path = workspace.PrimarySolution.Path,
+                        Name = workspace.PrimarySolution.Name,
+                        ProjectCount = workspace.PrimarySolution.ProjectCount
                     } : null,
-                    allSolutions = workspace.AllSolutions.Select(s => new
+                    AllSolutions = workspace.AllSolutions.Select(s => new
                     {
                         path = s.Path,
                         projects = s.Projects
                     }),
-                    frameworkVersions = workspace.FrameworkVersions,
-                    workspaceRoot = workspace.WorkspaceRoot
+                    FrameworkVersions = workspace.FrameworkVersions,
+                    WorkspaceRoot = workspace.WorkspaceRoot
                 }
             }.ToSerialized();
         }
@@ -47,14 +48,13 @@ public class RoslynTools(
         {
             logger.LogError(ex, "Failed to initialize workspace");
             
-            return new
+            return new ErrorResponse
             {
-                success = false,
-                error = new
+                Error = new ErrorInfo
                 {
-                    code = "INITIALIZATION_FAILED",
-                    message = ex.Message,
-                    details = new { exception = ex.GetType().Name }
+                    Code = "INITIALIZATION_FAILED",
+                    Message = ex.Message,
+                    Details = new { exception = ex.GetType().Name }
                 }
             }.ToSerialized();
         }
@@ -80,33 +80,32 @@ public class RoslynTools(
 
             if (symbolInfo == null)
             {
-                return new
+                return new ErrorResponse
                 {
-                    success = false,
-                    error = new
+                    Error = new ErrorInfo
                     {
-                        code = "SYMBOL_NOT_FOUND",
-                        message = $"No symbol found at position {line}:{column} in {filePath}"
+                        Code = "SYMBOL_NOT_FOUND",
+                        Message = $"No symbol found at position {line}:{column} in {filePath}"
                     }
                 }.ToSerialized();
             }
 
-            return new
+            return new GetTypeAtPositionResponse
             {
-                success = true,
-                data = new
+                Success = true,
+                Data = new TypeAtPositionData
                 {
-                    symbolName = symbolInfo.SymbolName,
-                    fullTypeName = symbolInfo.FullTypeName,
-                    kind = symbolInfo.Kind,
-                    assembly = symbolInfo.Assembly,
-                    @namespace = symbolInfo.Namespace,
-                    documentation = symbolInfo.Documentation,
-                    isGeneric = symbolInfo.IsGeneric,
-                    typeArguments = symbolInfo.TypeArguments,
-                    baseType = symbolInfo.BaseType,
-                    interfaces = symbolInfo.Interfaces,
-                    resolvedFromSolution = symbolInfo.ResolvedFromSolution
+                    SymbolName = symbolInfo.SymbolName,
+                    FullTypeName = symbolInfo.FullTypeName,
+                    Kind = symbolInfo.Kind,
+                    Assembly = symbolInfo.Assembly,
+                    Namespace = symbolInfo.Namespace,
+                    Documentation = symbolInfo.Documentation,
+                    IsGeneric = symbolInfo.IsGeneric,
+                    TypeArguments = symbolInfo.TypeArguments,
+                    BaseType = symbolInfo.BaseType,
+                    Interfaces = symbolInfo.Interfaces,
+                    ResolvedFromSolution = symbolInfo.ResolvedFromSolution
                 }
             }.ToSerialized();
         }
@@ -114,14 +113,13 @@ public class RoslynTools(
         {
             logger.LogError(ex, "Failed to get type at position");
             
-            return new
+            return new ErrorResponse
             {
-                success = false,
-                error = new
+                Error = new ErrorInfo
                 {
-                    code = DetermineErrorCode(ex),
-                    message = ex.Message,
-                    details = new { exception = ex.GetType().Name }
+                    Code = DetermineErrorCode(ex),
+                    Message = ex.Message,
+                    Details = new { exception = ex.GetType().Name }
                 }
             }.ToSerialized();
         }
@@ -153,31 +151,31 @@ public class RoslynTools(
 
             var membersList = members.ToList();
 
-            return new
+            return new GetAvailableMembersResponse
             {
-                success = true,
-                data = new
+                Success = true,
+                Data = new AvailableMembersData
                 {
-                    members = membersList.Select(m => new
+                    Members = membersList.Select(m => new MemberData
                     {
-                        name = m.Name,
-                        kind = m.Kind,
-                        signature = m.Signature,
-                        declaringType = m.DeclaringType,
-                        accessibility = m.Accessibility,
-                        documentation = m.Documentation,
-                        parameters = m.Parameters?.Select(p => new
+                        Name = m.Name,
+                        Kind = m.Kind,
+                        Signature = m.Signature,
+                        DeclaringType = m.DeclaringType,
+                        Accessibility = m.Accessibility,
+                        Documentation = m.Documentation,
+                        Parameters = m.Parameters?.Select(p => new ParameterData
                         {
-                            name = p.Name,
-                            type = p.Type,
-                            documentation = p.Documentation
+                            Name = p.Name,
+                            Type = p.Type,
+                            Documentation = p.Documentation
                         }),
-                        isExtension = m.IsExtension,
-                        isStatic = m.IsStatic,
-                        isAsync = m.IsAsync
+                        IsExtension = m.IsExtension,
+                        IsStatic = m.IsStatic,
+                        IsAsync = m.IsAsync
                     }),
-                    totalCount = membersList.Count,
-                    filteredCount = membersList.Count
+                    TotalCount = membersList.Count,
+                    FilteredCount = membersList.Count
                 }
             }.ToSerialized();
         }
@@ -185,14 +183,13 @@ public class RoslynTools(
         {
             logger.LogError(ex, "Failed to get available members");
             
-            return new
+            return new ErrorResponse
             {
-                success = false,
-                error = new
+                Error = new ErrorInfo
                 {
-                    code = DetermineErrorCode(ex),
-                    message = ex.Message,
-                    details = new { exception = ex.GetType().Name }
+                    Code = DetermineErrorCode(ex),
+                    Message = ex.Message,
+                    Details = new { exception = ex.GetType().Name }
                 }
             }.ToSerialized();
         }
@@ -218,37 +215,36 @@ public class RoslynTools(
 
             if (location == null || symbolInfo == null)
             {
-                return new
+                return new ErrorResponse
                 {
-                    success = false,
-                    error = new
+                    Error = new ErrorInfo
                     {
-                        code = "SYMBOL_NOT_FOUND",
-                        message = $"No symbol found at position {line}:{column} in {filePath}"
+                        Code = "SYMBOL_NOT_FOUND",
+                        Message = $"No symbol found at position {line}:{column} in {filePath}"
                     }
                 }.ToSerialized();
             }
 
-            return new
+            return new FindSymbolDefinitionResponse
             {
-                success = true,
-                data = new
+                Success = true,
+                Data = new SymbolDefinitionData
                 {
-                    definitionLocation = new
+                    DefinitionLocation = new LocationData
                     {
-                        filePath = location.FilePath,
-                        line = location.Line,
-                        column = location.Column,
-                        endLine = location.EndLine,
-                        endColumn = location.EndColumn
+                        FilePath = location.FilePath,
+                        Line = location.Line,
+                        Column = location.Column,
+                        EndLine = location.EndLine,
+                        EndColumn = location.EndColumn
                     },
-                    symbolInfo = new
+                    SymbolInfo = new SymbolInfoData
                     {
-                        name = symbolInfo.SymbolName,
-                        kind = symbolInfo.Kind,
-                        containingType = symbolInfo.FullTypeName
+                        Name = symbolInfo.SymbolName,
+                        Kind = symbolInfo.Kind,
+                        ContainingType = symbolInfo.FullTypeName
                     },
-                    sourceText = sourceText
+                    SourceText = sourceText
                 }
             }.ToSerialized();
         }
@@ -256,14 +252,13 @@ public class RoslynTools(
         {
             logger.LogError(ex, "Failed to find symbol definition");
             
-            return new
+            return new ErrorResponse
             {
-                success = false,
-                error = new
+                Error = new ErrorInfo
                 {
-                    code = DetermineErrorCode(ex),
-                    message = ex.Message,
-                    details = new { exception = ex.GetType().Name }
+                    Code = DetermineErrorCode(ex),
+                    Message = ex.Message,
+                    Details = new { exception = ex.GetType().Name }
                 }
             }.ToSerialized();
         }
@@ -291,21 +286,21 @@ public class RoslynTools(
                 solutionPath,
                 cancellationToken);
 
-            return new
+            return new FindReferencesResponse
             {
-                success = true,
-                data = new
+                Success = true,
+                Data = new ReferencesData
                 {
-                    references = references.Select(r => new
+                    References = references.Select(r => new ReferenceData
                     {
-                        filePath = r.FilePath,
-                        line = r.Line,
-                        column = r.Column,
-                        lineText = r.LineText,
-                        kind = r.Kind
+                        FilePath = r.FilePath,
+                        Line = r.Line,
+                        Column = r.Column,
+                        LineText = r.LineText,
+                        Kind = r.Kind
                     }),
-                    totalCount = totalCount,
-                    hasMore = hasMore
+                    TotalCount = totalCount,
+                    HasMore = hasMore
                 }
             }.ToSerialized();
         }
@@ -313,14 +308,252 @@ public class RoslynTools(
         {
             logger.LogError(ex, "Failed to find references");
             
-            return new
+            return new ErrorResponse
             {
-                success = false,
-                error = new
+                Error = new ErrorInfo
                 {
-                    code = DetermineErrorCode(ex),
-                    message = ex.Message,
-                    details = new { exception = ex.GetType().Name }
+                    Code = DetermineErrorCode(ex),
+                    Message = ex.Message,
+                    Details = new { exception = ex.GetType().Name }
+                }
+            }.ToSerialized();
+        }
+    }
+
+    [McpServerTool]
+    [Description("Find all implementations of an interface or derived types.")]
+    public async Task<string> FindImplementations(
+        [Description("Fully qualified type name")] string typeName,
+        [Description("Find derived types")] bool findDerivedTypes = true,
+        [Description("Find interface implementations")] bool findInterfaceImplementations = true,
+        [Description("Override solution path")] string? solutionPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var implementations = await roslynService.FindImplementationsAsync(
+                typeName,
+                findDerivedTypes,
+                findInterfaceImplementations,
+                solutionPath,
+                cancellationToken);
+
+            return new FindImplementationsResponse
+            {
+                Success = true,
+                Data = new ImplementationsData
+                {
+                    Implementations = implementations.Select(i => new ImplementationData
+                    {
+                        TypeName = i.TypeName,
+                        FullTypeName = i.FullTypeName,
+                        FilePath = i.FilePath,
+                        Line = i.Line,
+                        Kind = i.Kind,
+                        ImplementsDirectly = i.ImplementsDirectly
+                    })
+                }
+            }.ToSerialized();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to find implementations");
+            
+            return new ErrorResponse
+            {
+                Error = new ErrorInfo
+                {
+                    Code = DetermineErrorCode(ex),
+                    Message = ex.Message,
+                    Details = new { exception = ex.GetType().Name }
+                }
+            }.ToSerialized();
+        }
+    }
+
+    [McpServerTool]
+    [Description("Get inheritance hierarchy for a type.")]
+    public async Task<string> GetTypeHierarchy(
+        [Description("Fully qualified type name")] string typeName,
+        [Description("Direction: Base, Derived, or Both")] string direction = "Both",
+        [Description("Override solution path")] string? solutionPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var hierarchy = await roslynService.GetTypeHierarchyAsync(
+                typeName,
+                direction,
+                solutionPath,
+                cancellationToken);
+
+            return new GetTypeHierarchyResponse
+            {
+                Success = true,
+                Data = new TypeHierarchyData
+                {
+                    BaseTypes = hierarchy.BaseTypes.Select(t => new TypeInfoData
+                    {
+                        TypeName = t.TypeName,
+                        FullTypeName = t.FullTypeName,
+                        Assembly = t.Assembly
+                    }),
+                    DerivedTypes = hierarchy.DerivedTypes.Select(t => new TypeInfoData
+                    {
+                        TypeName = t.TypeName,
+                        FullTypeName = t.FullTypeName,
+                        Assembly = t.Assembly
+                    }),
+                    Interfaces = hierarchy.Interfaces.Select(t => new TypeInfoData
+                    {
+                        TypeName = t.TypeName,
+                        FullTypeName = t.FullTypeName,
+                        Assembly = t.Assembly
+                    })
+                }
+            }.ToSerialized();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get type hierarchy");
+            
+            return new ErrorResponse
+            {
+                Error = new ErrorInfo
+                {
+                    Code = DetermineErrorCode(ex),
+                    Message = ex.Message,
+                    Details = new { exception = ex.GetType().Name }
+                }
+            }.ToSerialized();
+        }
+    }
+
+    [McpServerTool]
+    [Description("Analyze a code block for diagnostics, symbols, and complexity.")]
+    public async Task<string> AnalyzeCodeBlock(
+        [Description("Path to source file")] string filePath,
+        [Description("Start line (1-based)")] int startLine,
+        [Description("End line (1-based)")] int endLine,
+        [Description("Override solution path")] string? solutionPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var analysis = await roslynService.AnalyzeCodeBlockAsync(
+                filePath,
+                startLine,
+                endLine,
+                solutionPath,
+                cancellationToken);
+
+            return new AnalyzeCodeBlockResponse
+            {
+                Success = true,
+                Data = new CodeBlockAnalysisData
+                {
+                    Diagnostics = analysis.Diagnostics.Select(d => new DiagnosticData
+                    {
+                        Id = d.Id,
+                        Severity = d.Severity,
+                        Message = d.Message,
+                        FilePath = d.FilePath,
+                        Line = d.Line,
+                        Column = d.Column,
+                        EndLine = d.EndLine,
+                        EndColumn = d.EndColumn,
+                        Category = d.Category
+                    }),
+                    DeclaredSymbols = analysis.DeclaredSymbols.Select(s => new DeclaredSymbolData
+                    {
+                        SymbolName = s.SymbolName,
+                        FullTypeName = s.FullTypeName,
+                        Kind = s.Kind,
+                        Namespace = s.Namespace
+                    }),
+                    ReferencedSymbols = analysis.ReferencedSymbols.Select(s => new ReferencedSymbolData
+                    {
+                        SymbolName = s.SymbolName,
+                        FullTypeName = s.FullTypeName,
+                        Kind = s.Kind,
+                        Namespace = s.Namespace
+                    }),
+                    CyclomaticComplexity = analysis.CyclomaticComplexity,
+                    LinesOfCode = analysis.LinesOfCode
+                }
+            }.ToSerialized();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to analyze code block");
+            
+            return new ErrorResponse
+            {
+                Error = new ErrorInfo
+                {
+                    Code = DetermineErrorCode(ex),
+                    Message = ex.Message,
+                    Details = new { exception = ex.GetType().Name }
+                }
+            }.ToSerialized();
+        }
+    }
+
+    [McpServerTool]
+    [Description("Get compilation diagnostics for a file or entire solution.")]
+    public async Task<string> GetCompilationDiagnostics(
+        [Description("Path to source file (optional - omit for entire solution)")] string? filePath = null,
+        [Description("Override solution path")] string? solutionPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var diagnostics = await roslynService.GetCompilationDiagnosticsAsync(
+                filePath,
+                solutionPath,
+                cancellationToken);
+
+            var diagnosticsList = diagnostics.ToList();
+            var errorCount = diagnosticsList.Count(d => d.Severity == "Error");
+            var warningCount = diagnosticsList.Count(d => d.Severity == "Warning");
+
+            return new GetCompilationDiagnosticsResponse
+            {
+                Success = true,
+                Data = new CompilationDiagnosticsData
+                {
+                    Diagnostics = diagnosticsList.Select(d => new DiagnosticData
+                    {
+                        Id = d.Id,
+                        Severity = d.Severity,
+                        Message = d.Message,
+                        FilePath = d.FilePath,
+                        Line = d.Line,
+                        Column = d.Column,
+                        EndLine = d.EndLine,
+                        EndColumn = d.EndColumn,
+                        Category = d.Category
+                    }),
+                    Summary = new DiagnosticsSummary
+                    {
+                        TotalCount = diagnosticsList.Count,
+                        ErrorCount = errorCount,
+                        WarningCount = warningCount
+                    }
+                }
+            }.ToSerialized();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get compilation diagnostics");
+            
+            return new ErrorResponse
+            {
+                Error = new ErrorInfo
+                {
+                    Code = DetermineErrorCode(ex),
+                    Message = ex.Message,
+                    Details = new { exception = ex.GetType().Name }
                 }
             }.ToSerialized();
         }

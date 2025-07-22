@@ -207,7 +207,7 @@ public class RoslynService
         return null;
     }
 
-    public async Task<IEnumerable<Models.MemberInfo>> GetAvailableMembersAsync(
+    public async Task<IEnumerable<MemberInfo>> GetAvailableMembersAsync(
         string filePath,
         int line,
         int column,
@@ -240,13 +240,13 @@ public class RoslynService
         var root = await document.GetSyntaxRootAsync(cancellationToken);
         if (root == null)
         {
-            return Enumerable.Empty<Models.MemberInfo>();
+            return [];
         }
 
         var position = GetPosition(await document.GetTextAsync(cancellationToken), line, column);
         var token = root.FindToken(position);
         
-        var members = new List<Models.MemberInfo>();
+        var members = new List<MemberInfo>();
         
         // Get type info at position
         var typeInfo = semanticModel.GetTypeInfo(token.Parent!, cancellationToken);
@@ -254,7 +254,7 @@ public class RoslynService
         {
             // Get instance members
             var typeMembers = typeInfo.Type.GetMembers()
-                .Where(m => m.CanBeReferencedByName && m.DeclaredAccessibility == Accessibility.Public);
+                .Where(m => m is { CanBeReferencedByName: true, DeclaredAccessibility: Accessibility.Public });
             
             if (!includeStatic)
             {
@@ -263,7 +263,7 @@ public class RoslynService
 
             foreach (var member in typeMembers)
             {
-                if (!string.IsNullOrEmpty(filter) && !member.Name.StartsWith(filter, StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrWhiteSpace(filter) && !member.Name.StartsWith(filter, StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 var memberInfo = CreateMemberInfo(member);
@@ -290,14 +290,14 @@ public class RoslynService
         return members;
     }
 
-    private Task<IEnumerable<Models.MemberInfo>> GetExtensionMethodsAsync(
+    private Task<IEnumerable<MemberInfo>> GetExtensionMethodsAsync(
         SemanticModel semanticModel,
         int position,
         ITypeSymbol targetType,
         string? filter,
         CancellationToken cancellationToken)
     {
-        var extensionMethods = new List<Models.MemberInfo>();
+        var extensionMethods = new List<MemberInfo>();
         
         // Get all types in scope
         var compilation = semanticModel.Compilation;
@@ -342,7 +342,7 @@ public class RoslynService
             }
         }
 
-        return Task.FromResult<IEnumerable<Models.MemberInfo>>(extensionMethods);
+        return Task.FromResult<IEnumerable<MemberInfo>>(extensionMethods);
     }
     
     private bool IsTypeCompatible(ITypeSymbol targetType, ITypeSymbol parameterType)
@@ -366,9 +366,9 @@ public class RoslynService
         return usings!;
     }
 
-    private Models.MemberInfo? CreateMemberInfo(ISymbol member)
+    private MemberInfo? CreateMemberInfo(ISymbol member)
     {
-        var memberInfo = new Models.MemberInfo
+        var memberInfo = new MemberInfo
         {
             Name = member.Name,
             Kind = member.Kind.ToString(),
@@ -383,7 +383,7 @@ public class RoslynService
             case IMethodSymbol method:
                 memberInfo.Signature = method.ToDisplayString();
                 memberInfo.IsAsync = method.IsAsync;
-                memberInfo.Parameters = method.Parameters.Select(p => new Models.ParameterInfo
+                memberInfo.Parameters = method.Parameters.Select(p => new ParameterInfo
                 {
                     Name = p.Name,
                     Type = p.Type.ToDisplayString(),
@@ -410,7 +410,7 @@ public class RoslynService
         return memberInfo;
     }
 
-    public async Task<(Models.DefinitionLocation? location, Models.SymbolInfo? symbolInfo, string? sourceText)> 
+    public async Task<(DefinitionLocation? location, Models.SymbolInfo? symbolInfo, string? sourceText)> 
         FindSymbolDefinitionAsync(
             string filePath,
             int line,
@@ -470,7 +470,7 @@ public class RoslynService
         var text = await location.SourceTree!.GetTextAsync(cancellationToken);
         var lineSpan = text.Lines.GetLinePositionSpan(span);
         
-        var definitionLocation = new Models.DefinitionLocation
+        var definitionLocation = new DefinitionLocation
         {
             FilePath = definitionDoc.FilePath ?? string.Empty,
             Line = lineSpan.Start.Line + 1,
@@ -568,4 +568,371 @@ public class RoslynService
         return (locations.Take(maxResults), totalCount, totalCount > maxResults);
     }
 
+    public async Task<IEnumerable<ImplementationInfo>> FindImplementationsAsync(
+        string typeName,
+        bool findDerivedTypes = true,
+        bool findInterfaceImplementations = true,
+        string? solutionPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveSolutionPath = await ResolveEffectiveSolutionPath(string.Empty, solutionPath);
+        if (string.IsNullOrEmpty(effectiveSolutionPath))
+        {
+            effectiveSolutionPath = await SearchFromCurrentDirectory() ?? 
+                throw new InvalidOperationException("Could not find solution");
+        }
+
+        var solution = await _solutionCache.GetSolutionAsync(effectiveSolutionPath, cancellationToken);
+        var compilation = await GetCompilationAsync(solution, cancellationToken);
+        
+        var targetType = compilation.GetTypeByMetadataName(typeName);
+        if (targetType == null)
+        {
+            // Try to find by simple name
+            targetType = compilation.GetSymbolsWithName(
+                n => n.Equals(typeName) || n.EndsWith("." + typeName), 
+                SymbolFilter.Type)
+                .OfType<INamedTypeSymbol>()
+                .FirstOrDefault();
+        }
+        
+        if (targetType == null)
+        {
+            return Enumerable.Empty<ImplementationInfo>();
+        }
+
+        var implementations = new List<ImplementationInfo>();
+
+        if (targetType.TypeKind == TypeKind.Interface && findInterfaceImplementations)
+        {
+            var implementors = await SymbolFinder.FindImplementationsAsync(
+                targetType, solution, cancellationToken: cancellationToken);
+            
+            foreach (var impl in implementors.OfType<INamedTypeSymbol>())
+            {
+                var location = impl.Locations.FirstOrDefault(l => l.IsInSource);
+                if (location != null)
+                {
+                    implementations.Add(CreateImplementationInfo(impl, location, true));
+                }
+            }
+        }
+
+        if (findDerivedTypes && targetType.TypeKind == TypeKind.Class)
+        {
+            var derivedTypes = await SymbolFinder.FindDerivedClassesAsync(
+                targetType, solution, cancellationToken: cancellationToken);
+            
+            foreach (var derived in derivedTypes)
+            {
+                var location = derived.Locations.FirstOrDefault(l => l.IsInSource);
+                if (location != null)
+                {
+                    implementations.Add(CreateImplementationInfo(derived, location, true));
+                }
+            }
+        }
+
+        return implementations;
+    }
+
+    private ImplementationInfo CreateImplementationInfo(
+        INamedTypeSymbol type, Location location, bool implementsDirectly)
+    {
+        var doc = _solutionCache.GetSolutionAsync(string.Empty).Result
+            .GetDocument(location.SourceTree);
+        var lineSpan = location.GetLineSpan();
+        
+        return new ImplementationInfo
+        {
+            TypeName = type.Name,
+            FullTypeName = type.ToDisplayString(),
+            FilePath = doc?.FilePath ?? string.Empty,
+            Line = lineSpan.StartLinePosition.Line + 1,
+            Kind = type.TypeKind.ToString(),
+            ImplementsDirectly = implementsDirectly
+        };
+    }
+
+    public async Task<TypeHierarchyInfo> GetTypeHierarchyAsync(
+        string typeName,
+        string direction = "Both",
+        string? solutionPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveSolutionPath = await ResolveEffectiveSolutionPath(string.Empty, solutionPath);
+        if (string.IsNullOrEmpty(effectiveSolutionPath))
+        {
+            effectiveSolutionPath = await SearchFromCurrentDirectory() ?? 
+                throw new InvalidOperationException("Could not find solution");
+        }
+
+        var solution = await _solutionCache.GetSolutionAsync(effectiveSolutionPath, cancellationToken);
+        var compilation = await GetCompilationAsync(solution, cancellationToken);
+        
+        var targetType = compilation.GetTypeByMetadataName(typeName);
+        if (targetType == null)
+        {
+            targetType = compilation.GetSymbolsWithName(
+                n => n.Equals(typeName) || n.EndsWith("." + typeName), 
+                SymbolFilter.Type)
+                .OfType<INamedTypeSymbol>()
+                .FirstOrDefault();
+        }
+        
+        if (targetType == null)
+        {
+            return new TypeHierarchyInfo();
+        }
+
+        var hierarchy = new TypeHierarchyInfo();
+
+        // Get base types
+        if (direction == "Base" || direction == "Both")
+        {
+            var baseType = targetType.BaseType;
+            while (baseType != null && baseType.SpecialType != SpecialType.System_Object)
+            {
+                hierarchy.BaseTypes.Add(new Models.TypeInfo
+                {
+                    TypeName = baseType.Name,
+                    FullTypeName = baseType.ToDisplayString(),
+                    Assembly = baseType.ContainingAssembly?.Name
+                });
+                baseType = baseType.BaseType;
+            }
+        }
+
+        // Get derived types
+        if (direction == "Derived" || direction == "Both")
+        {
+            if (targetType.TypeKind == TypeKind.Class)
+            {
+                var derivedTypes = await SymbolFinder.FindDerivedClassesAsync(
+                    targetType, solution, cancellationToken: cancellationToken);
+                
+                foreach (var derived in derivedTypes)
+                {
+                    hierarchy.DerivedTypes.Add(new Models.TypeInfo
+                    {
+                        TypeName = derived.Name,
+                        FullTypeName = derived.ToDisplayString(),
+                        Assembly = derived.ContainingAssembly?.Name
+                    });
+                }
+            }
+        }
+
+        // Get interfaces
+        foreach (var iface in targetType.AllInterfaces)
+        {
+            hierarchy.Interfaces.Add(new Models.TypeInfo
+            {
+                TypeName = iface.Name,
+                FullTypeName = iface.ToDisplayString(),
+                Assembly = iface.ContainingAssembly?.Name
+            });
+        }
+
+        return hierarchy;
+    }
+
+    public async Task<CodeBlockAnalysis> AnalyzeCodeBlockAsync(
+        string filePath,
+        int startLine,
+        int endLine,
+        string? solutionPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveSolutionPath = await ResolveEffectiveSolutionPath(filePath, solutionPath);
+        if (string.IsNullOrEmpty(effectiveSolutionPath))
+        {
+            throw new InvalidOperationException($"Could not find solution for file: {filePath}");
+        }
+
+        var solution = await _solutionCache.GetSolutionAsync(effectiveSolutionPath, cancellationToken);
+        var document = GetDocument(solution, filePath);
+        
+        if (document == null)
+        {
+            throw new FileNotFoundException($"Document not found in solution: {filePath}");
+        }
+
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+        if (semanticModel == null)
+        {
+            throw new InvalidOperationException($"Could not get semantic model for document: {filePath}");
+        }
+
+        var root = await document.GetSyntaxRootAsync(cancellationToken);
+        if (root == null)
+        {
+            return new CodeBlockAnalysis();
+        }
+
+        var text = await document.GetTextAsync(cancellationToken);
+        var startPos = text.Lines[startLine - 1].Start;
+        var endPos = text.Lines[Math.Min(endLine - 1, text.Lines.Count - 1)].End;
+        var span = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(startPos, endPos);
+
+        var analysis = new CodeBlockAnalysis();
+
+        // Get diagnostics
+        var compilation = await document.Project.GetCompilationAsync(cancellationToken);
+        var tree = await document.GetSyntaxTreeAsync(cancellationToken);
+        var diagnostics = semanticModel.GetDiagnostics(span);
+        foreach (var diagnostic in diagnostics)
+        {
+            var lineSpan = diagnostic.Location.GetLineSpan();
+            analysis.Diagnostics.Add(new DiagnosticInfo
+            {
+                Id = diagnostic.Id,
+                Severity = diagnostic.Severity.ToString(),
+                Message = diagnostic.GetMessage(),
+                FilePath = filePath,
+                Line = lineSpan.StartLinePosition.Line + 1,
+                Column = lineSpan.StartLinePosition.Character + 1,
+                EndLine = lineSpan.EndLinePosition.Line + 1,
+                EndColumn = lineSpan.EndLinePosition.Character + 1,
+                Category = diagnostic.Descriptor.Category
+            });
+        }
+
+        // Find declared symbols
+        var nodes = root.DescendantNodes(span);
+        foreach (var node in nodes)
+        {
+            var declaredSymbol = semanticModel.GetDeclaredSymbol(node);
+            if (declaredSymbol != null)
+            {
+                analysis.DeclaredSymbols.Add(CreateSymbolInfo(declaredSymbol, effectiveSolutionPath));
+            }
+        }
+
+        // Calculate cyclomatic complexity (simplified)
+        analysis.CyclomaticComplexity = CalculateCyclomaticComplexity(nodes);
+        analysis.LinesOfCode = endLine - startLine + 1;
+
+        return analysis;
+    }
+
+    private int CalculateCyclomaticComplexity(IEnumerable<SyntaxNode> nodes)
+    {
+        var complexity = 1;
+        foreach (var node in nodes)
+        {
+            switch (node.Kind())
+            {
+                case SyntaxKind.IfStatement:
+                case SyntaxKind.WhileStatement:
+                case SyntaxKind.ForStatement:
+                case SyntaxKind.ForEachStatement:
+                case SyntaxKind.CaseSwitchLabel:
+                case SyntaxKind.ConditionalExpression:
+                case SyntaxKind.LogicalAndExpression:
+                case SyntaxKind.LogicalOrExpression:
+                case SyntaxKind.CoalesceExpression:
+                    complexity++;
+                    break;
+            }
+        }
+        return complexity;
+    }
+
+    public async Task<IEnumerable<DiagnosticInfo>> GetCompilationDiagnosticsAsync(
+        string? filePath = null,
+        string? solutionPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        var effectiveSolutionPath = await ResolveEffectiveSolutionPath(filePath ?? string.Empty, solutionPath);
+        if (string.IsNullOrEmpty(effectiveSolutionPath))
+        {
+            effectiveSolutionPath = await SearchFromCurrentDirectory() ?? 
+                throw new InvalidOperationException("Could not find solution");
+        }
+
+        var solution = await _solutionCache.GetSolutionAsync(effectiveSolutionPath, cancellationToken);
+        var diagnostics = new List<DiagnosticInfo>();
+
+        if (!string.IsNullOrEmpty(filePath))
+        {
+            // Get diagnostics for specific file
+            var document = GetDocument(solution, filePath);
+            if (document != null)
+            {
+                var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+                if (semanticModel != null)
+                {
+                    var docDiagnostics = semanticModel.GetDiagnostics();
+                    diagnostics.AddRange(ConvertDiagnostics(docDiagnostics, filePath));
+                }
+            }
+        }
+        else
+        {
+            // Get all compilation diagnostics
+            var compilation = await GetCompilationAsync(solution, cancellationToken);
+            var compilationDiagnostics = compilation.GetDiagnostics(cancellationToken);
+            
+            foreach (var diagnostic in compilationDiagnostics)
+            {
+                if (diagnostic.Location.IsInSource)
+                {
+                    var doc = solution.GetDocument(diagnostic.Location.SourceTree);
+                    if (doc != null)
+                    {
+                        diagnostics.Add(ConvertDiagnostic(diagnostic, doc.FilePath ?? string.Empty));
+                    }
+                }
+            }
+        }
+
+        return diagnostics;
+    }
+
+    private IEnumerable<DiagnosticInfo> ConvertDiagnostics(
+        IEnumerable<Diagnostic> diagnostics, string filePath)
+    {
+        return diagnostics.Select(d => ConvertDiagnostic(d, filePath));
+    }
+
+    private DiagnosticInfo ConvertDiagnostic(Diagnostic diagnostic, string filePath)
+    {
+        var lineSpan = diagnostic.Location.GetLineSpan();
+        return new DiagnosticInfo
+        {
+            Id = diagnostic.Id,
+            Severity = diagnostic.Severity.ToString(),
+            Message = diagnostic.GetMessage(),
+            FilePath = filePath,
+            Line = lineSpan.StartLinePosition.Line + 1,
+            Column = lineSpan.StartLinePosition.Character + 1,
+            EndLine = lineSpan.EndLinePosition.Line + 1,
+            EndColumn = lineSpan.EndLinePosition.Character + 1,
+            Category = diagnostic.Descriptor.Category
+        };
+    }
+
+    private async Task<Compilation> GetCompilationAsync(Solution solution, CancellationToken cancellationToken)
+    {
+        // Get first project's compilation as a simple approach
+        var project = solution.Projects.FirstOrDefault();
+        if (project == null)
+        {
+            throw new InvalidOperationException("No projects found in solution");
+        }
+        
+        var compilation = await project.GetCompilationAsync(cancellationToken);
+        if (compilation == null)
+        {
+            throw new InvalidOperationException("Could not get compilation");
+        }
+        
+        return compilation;
+    }
+
+    private async Task<string?> SearchFromCurrentDirectory()
+    {
+        return await _workspaceResolver.FindSolutionForFileAsync(Directory.GetCurrentDirectory());
+    }
 }
