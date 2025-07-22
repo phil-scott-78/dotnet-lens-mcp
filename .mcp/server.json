@@ -1,0 +1,21 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/draft/2025-07-09/server.json",
+  "description": "An MCP server providing semantic code intelligence for .NET projects using Roslyn",
+  "name": "roslyn-mcp",
+  "packages": [
+    {
+      "registry_name": "nuget",
+      "name": "RoslynMcpServer",
+      "version": "0.1.0-beta",
+      "package_arguments": [],
+      "environment_variables": []
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/roslyn-mcp/roslyn-mcp",
+    "source": "github"
+  },
+  "version_detail": {
+    "version": "0.1.0-beta"
+  }
+}
