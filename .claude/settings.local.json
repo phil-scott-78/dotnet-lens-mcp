@@ -5,7 +5,8 @@
       "Bash(mkdir:*)",
       "Bash(dotnet build)",
       "Bash(ls:*)",
-      "Bash(dotnet restore:*)"
+      "Bash(dotnet restore:*)",
+      "Bash(dotnet build:*)"
     ],
     "deny": []
   }

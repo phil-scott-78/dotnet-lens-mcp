@@ -8,7 +8,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Phase 2 features (planned)
+- Phase 3 features (planned)
+
+---
+
+## [0.2.0] - 2025-07-22 - Phase 2 Completion
+
+### Added
+- `GetAvailableMembers` tool with filtering and extension method support
+- `FindSymbolDefinition` tool for go-to-definition functionality  
+- `FindReferences` tool for finding all usages
+- Extension methods discovery in GetAvailableMembersAsync
+- Support for filtering members by name prefix
+- Support for including/excluding static members
+- Comprehensive member information including parameters and documentation
+- Reference location tracking with line text and reference kind
+- Symbol definition location with source text extraction
+
+### Improved
+- Error handling with standardized error codes across all tools
+- File system watching already implemented in SolutionCache
+- Member discovery includes proper signatures and parameter information
+- Extension method discovery using compilation symbols
+
+### Technical Details
+- Implemented custom extension method discovery using compilation symbols
+- Added models for DefinitionLocation and ReferenceLocation
+- Enhanced MemberInfo with ParameterInfo for detailed method signatures
+- Improved type compatibility checking for extension methods
+- Added namespace resolution from using directives
+- Simplified reference kind detection due to API limitations
 
 ---
 

@@ -77,7 +77,7 @@ public class WorkspaceResolver
         return solution;
     }
 
-    private async Task<string?> SearchUpwardForSolution(string filePath)
+    private Task<string?> SearchUpwardForSolution(string filePath)
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
         
@@ -87,7 +87,7 @@ public class WorkspaceResolver
             if (slnFiles.Length == 1)
             {
                 _logger.LogDebug("Found solution: {Solution}", slnFiles[0]);
-                return slnFiles[0];
+                return Task.FromResult<string?>(slnFiles[0]);
             }
             
             if (slnFiles.Length == 0)
@@ -96,14 +96,14 @@ public class WorkspaceResolver
                 if (csprojFiles.Length == 1)
                 {
                     _logger.LogDebug("Found project: {Project}", csprojFiles[0]);
-                    return csprojFiles[0];
+                    return Task.FromResult<string?>(csprojFiles[0]);
                 }
             }
             
             directory = Directory.GetParent(directory)?.FullName;
         }
         
-        return null;
+        return Task.FromResult<string?>(null);
     }
 
     private async Task<string?> SearchFromCurrentDirectory()
