@@ -84,42 +84,17 @@ public class RoslynService
         }
 
         var position = GetPosition(await document.GetTextAsync(cancellationToken), line, column);
-        var token = root.FindToken(position);
+        var (symbol, type) = GetSymbolAndTypeAtPosition(semanticModel, root, position, cancellationToken);
+
+        // Use the symbol if found, otherwise use the type
+        var targetSymbol = symbol ?? type;
         
-        if (token.IsKind(SyntaxKind.None))
+        if (targetSymbol == null)
         {
             return null;
         }
 
-        var node = token.Parent;
-        ISymbol? symbol = null;
-
-        while (node != null && symbol == null)
-        {
-            symbol = semanticModel.GetSymbolInfo(node, cancellationToken).Symbol ?? 
-                    semanticModel.GetDeclaredSymbol(node, cancellationToken);
-            
-            if (symbol == null)
-            {
-                node = node.Parent;
-            }
-        }
-
-        if (symbol == null)
-        {
-            var typeInfo = semanticModel.GetTypeInfo(token.Parent!, cancellationToken);
-            if (typeInfo.Type != null)
-            {
-                symbol = typeInfo.Type;
-            }
-        }
-
-        if (symbol == null)
-        {
-            return null;
-        }
-
-        return CreateSymbolInfo(symbol, effectiveSolutionPath);
+        return CreateSymbolInfo(targetSymbol, effectiveSolutionPath);
     }
 
     private Document? GetDocument(Solution solution, string filePath)
@@ -244,16 +219,15 @@ public class RoslynService
         }
 
         var position = GetPosition(await document.GetTextAsync(cancellationToken), line, column);
-        var token = root.FindToken(position);
+        var (symbol, type) = GetSymbolAndTypeAtPosition(semanticModel, root, position, cancellationToken);
         
         var members = new List<MemberInfo>();
         
-        // Get type info at position
-        var typeInfo = semanticModel.GetTypeInfo(token.Parent!, cancellationToken);
-        if (typeInfo.Type != null)
+        // Use the type we found
+        if (type != null)
         {
             // Get instance members
-            var typeMembers = typeInfo.Type.GetMembers()
+            var typeMembers = type.GetMembers()
                 .Where(m => m is { CanBeReferencedByName: true, DeclaredAccessibility: Accessibility.Public });
             
             if (!includeStatic)
@@ -275,12 +249,12 @@ public class RoslynService
         }
 
         // Get extension methods if requested
-        if (includeExtensionMethods && typeInfo.Type != null)
+        if (includeExtensionMethods && type != null)
         {
             var extensionMethods = await GetExtensionMethodsAsync(
                 semanticModel, 
                 position, 
-                typeInfo.Type, 
+                type, 
                 filter,
                 cancellationToken);
             
@@ -569,31 +543,68 @@ public class RoslynService
     }
 
     public async Task<IEnumerable<ImplementationInfo>> FindImplementationsAsync(
-        string typeName,
+        string filePath,
+        int line,
+        int column,
         bool findDerivedTypes = true,
         bool findInterfaceImplementations = true,
+        string? typeName = null, // Optional: can still search by type name if provided
         string? solutionPath = null,
         CancellationToken cancellationToken = default)
     {
-        var effectiveSolutionPath = await ResolveEffectiveSolutionPath(string.Empty, solutionPath);
+        var effectiveSolutionPath = await ResolveEffectiveSolutionPath(filePath, solutionPath);
         if (string.IsNullOrEmpty(effectiveSolutionPath))
         {
-            effectiveSolutionPath = await SearchFromCurrentDirectory() ?? 
-                throw new InvalidOperationException("Could not find solution");
+            throw new InvalidOperationException($"Could not find solution for file: {filePath}");
         }
 
         var solution = await _solutionCache.GetSolutionAsync(effectiveSolutionPath, cancellationToken);
-        var compilation = await GetCompilationAsync(solution, cancellationToken);
-        
-        var targetType = compilation.GetTypeByMetadataName(typeName);
-        if (targetType == null)
+        INamedTypeSymbol? targetType = null;
+
+        // If type name is provided, use it (backwards compatibility / direct search)
+        if (!string.IsNullOrEmpty(typeName))
         {
-            // Try to find by simple name
-            targetType = compilation.GetSymbolsWithName(
-                n => n.Equals(typeName) || n.EndsWith("." + typeName), 
-                SymbolFilter.Type)
-                .OfType<INamedTypeSymbol>()
-                .FirstOrDefault();
+            var compilation = await GetCompilationAsync(solution, cancellationToken);
+            targetType = compilation.GetTypeByMetadataName(typeName);
+            if (targetType == null)
+            {
+                // Try to find by simple name
+                targetType = compilation.GetSymbolsWithName(
+                    n => n.Equals(typeName) || n.EndsWith("." + typeName), 
+                    SymbolFilter.Type)
+                    .OfType<INamedTypeSymbol>()
+                    .FirstOrDefault();
+            }
+        }
+        else
+        {
+            // Use position-based discovery
+            var document = GetDocument(solution, filePath);
+            if (document == null)
+            {
+                throw new FileNotFoundException($"Document not found in solution: {filePath}");
+            }
+
+            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+            if (semanticModel == null)
+            {
+                throw new InvalidOperationException($"Could not get semantic model for document: {filePath}");
+            }
+
+            var root = await document.GetSyntaxRootAsync(cancellationToken);
+            if (root == null)
+            {
+                return Enumerable.Empty<ImplementationInfo>();
+            }
+
+            var position = GetPosition(await document.GetTextAsync(cancellationToken), line, column);
+            var (symbol, type) = GetSymbolAndTypeAtPosition(semanticModel, root, position, cancellationToken);
+            
+            targetType = type as INamedTypeSymbol;
+            if (targetType == null && symbol is INamedTypeSymbol namedSymbol)
+            {
+                targetType = namedSymbol;
+            }
         }
         
         if (targetType == null)
@@ -655,29 +666,66 @@ public class RoslynService
     }
 
     public async Task<TypeHierarchyInfo> GetTypeHierarchyAsync(
-        string typeName,
+        string filePath,
+        int line,
+        int column,
         string direction = "Both",
+        string? typeName = null, // Optional: can still search by type name if provided
         string? solutionPath = null,
         CancellationToken cancellationToken = default)
     {
-        var effectiveSolutionPath = await ResolveEffectiveSolutionPath(string.Empty, solutionPath);
+        var effectiveSolutionPath = await ResolveEffectiveSolutionPath(filePath, solutionPath);
         if (string.IsNullOrEmpty(effectiveSolutionPath))
         {
-            effectiveSolutionPath = await SearchFromCurrentDirectory() ?? 
-                throw new InvalidOperationException("Could not find solution");
+            throw new InvalidOperationException($"Could not find solution for file: {filePath}");
         }
 
         var solution = await _solutionCache.GetSolutionAsync(effectiveSolutionPath, cancellationToken);
-        var compilation = await GetCompilationAsync(solution, cancellationToken);
-        
-        var targetType = compilation.GetTypeByMetadataName(typeName);
-        if (targetType == null)
+        INamedTypeSymbol? targetType = null;
+
+        // If type name is provided, use it (backwards compatibility / direct search)
+        if (!string.IsNullOrEmpty(typeName))
         {
-            targetType = compilation.GetSymbolsWithName(
-                n => n.Equals(typeName) || n.EndsWith("." + typeName), 
-                SymbolFilter.Type)
-                .OfType<INamedTypeSymbol>()
-                .FirstOrDefault();
+            var compilation = await GetCompilationAsync(solution, cancellationToken);
+            targetType = compilation.GetTypeByMetadataName(typeName);
+            if (targetType == null)
+            {
+                targetType = compilation.GetSymbolsWithName(
+                    n => n.Equals(typeName) || n.EndsWith("." + typeName), 
+                    SymbolFilter.Type)
+                    .OfType<INamedTypeSymbol>()
+                    .FirstOrDefault();
+            }
+        }
+        else
+        {
+            // Use position-based discovery
+            var document = GetDocument(solution, filePath);
+            if (document == null)
+            {
+                throw new FileNotFoundException($"Document not found in solution: {filePath}");
+            }
+
+            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+            if (semanticModel == null)
+            {
+                throw new InvalidOperationException($"Could not get semantic model for document: {filePath}");
+            }
+
+            var root = await document.GetSyntaxRootAsync(cancellationToken);
+            if (root == null)
+            {
+                return new TypeHierarchyInfo();
+            }
+
+            var position = GetPosition(await document.GetTextAsync(cancellationToken), line, column);
+            var (symbol, type) = GetSymbolAndTypeAtPosition(semanticModel, root, position, cancellationToken);
+            
+            targetType = type as INamedTypeSymbol;
+            if (targetType == null && symbol is INamedTypeSymbol namedSymbol)
+            {
+                targetType = namedSymbol;
+            }
         }
         
         if (targetType == null)
@@ -934,5 +982,75 @@ public class RoslynService
     private async Task<string?> SearchFromCurrentDirectory()
     {
         return await _workspaceResolver.FindSolutionForFileAsync(Directory.GetCurrentDirectory());
+    }
+
+    private (ISymbol? symbol, ITypeSymbol? type) GetSymbolAndTypeAtPosition(
+        SemanticModel semanticModel,
+        SyntaxNode root,
+        int position,
+        CancellationToken cancellationToken)
+    {
+        var token = root.FindToken(position);
+        
+        if (token.IsKind(SyntaxKind.None))
+        {
+            return (null, null);
+        }
+
+        // First, try to find a symbol by walking up the syntax tree
+        var node = token.Parent;
+        ISymbol? symbol = null;
+
+        while (node != null && symbol == null)
+        {
+            symbol = semanticModel.GetSymbolInfo(node, cancellationToken).Symbol ?? 
+                    semanticModel.GetDeclaredSymbol(node, cancellationToken);
+            
+            if (symbol == null)
+            {
+                node = node.Parent;
+            }
+        }
+
+        // Get the type information
+        ITypeSymbol? type = null;
+        
+        // If we found a symbol, get its type
+        if (symbol != null)
+        {
+            type = symbol switch
+            {
+                ILocalSymbol local => local.Type,
+                IFieldSymbol field => field.Type,
+                IPropertySymbol property => property.Type,
+                IParameterSymbol parameter => parameter.Type,
+                IMethodSymbol method => method.ReturnType,
+                ITypeSymbol typeSymbol => typeSymbol,
+                _ => null
+            };
+        }
+
+        // If we didn't find a type through symbol, try GetTypeInfo
+        if (type == null && token.Parent != null)
+        {
+            var typeInfo = semanticModel.GetTypeInfo(token.Parent, cancellationToken);
+            type = typeInfo.Type ?? typeInfo.ConvertedType;
+        }
+
+        // Special handling for member access expressions (e.g., obj.Member)
+        if (type == null)
+        {
+            var memberAccess = token.Parent?.AncestorsAndSelf()
+                .OfType<MemberAccessExpressionSyntax>()
+                .FirstOrDefault();
+            
+            if (memberAccess != null)
+            {
+                var expressionTypeInfo = semanticModel.GetTypeInfo(memberAccess.Expression, cancellationToken);
+                type = expressionTypeInfo.Type ?? expressionTypeInfo.ConvertedType;
+            }
+        }
+
+        return (symbol, type);
     }
 }

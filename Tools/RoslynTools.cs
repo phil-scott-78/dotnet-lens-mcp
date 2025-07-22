@@ -323,18 +323,24 @@ public class RoslynTools(
     [McpServerTool]
     [Description("Find all implementations of an interface or derived types.")]
     public async Task<string> FindImplementations(
-        [Description("Fully qualified type name")] string typeName,
+        [Description("Path to source file")] string filePath,
+        [Description("1-based line number")] int line,
+        [Description("1-based column number")] int column,
         [Description("Find derived types")] bool findDerivedTypes = true,
         [Description("Find interface implementations")] bool findInterfaceImplementations = true,
+        [Description("Optional: specific type name to search for")] string? typeName = null,
         [Description("Override solution path")] string? solutionPath = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var implementations = await roslynService.FindImplementationsAsync(
-                typeName,
+                filePath,
+                line,
+                column,
                 findDerivedTypes,
                 findInterfaceImplementations,
+                typeName,
                 solutionPath,
                 cancellationToken);
 
@@ -374,16 +380,22 @@ public class RoslynTools(
     [McpServerTool]
     [Description("Get inheritance hierarchy for a type.")]
     public async Task<string> GetTypeHierarchy(
-        [Description("Fully qualified type name")] string typeName,
+        [Description("Path to source file")] string filePath,
+        [Description("1-based line number")] int line,
+        [Description("1-based column number")] int column,
         [Description("Direction: Base, Derived, or Both")] string direction = "Both",
+        [Description("Optional: specific type name to search for")] string? typeName = null,
         [Description("Override solution path")] string? solutionPath = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var hierarchy = await roslynService.GetTypeHierarchyAsync(
-                typeName,
+                filePath,
+                line,
+                column,
                 direction,
+                typeName,
                 solutionPath,
                 cancellationToken);
 
