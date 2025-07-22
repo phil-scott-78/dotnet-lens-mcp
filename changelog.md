@@ -8,7 +8,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Phase 3 features (planned)
+- Phase 4 features (planned)
+
+---
+
+## [0.3.0] - 2025-07-22 - Phase 3 Completion
+
+### Added
+- `FindImplementations` tool for finding interface implementations and derived types
+- `GetTypeHierarchy` tool for exploring inheritance hierarchies
+- `AnalyzeCodeBlock` tool with code analysis and complexity metrics
+- `GetCompilationDiagnostics` tool for retrieving compilation errors and warnings
+- Support for both file-specific and solution-wide diagnostics
+- Cyclomatic complexity calculation for code blocks
+- Symbol discovery within code blocks (declared and referenced symbols)
+- Type hierarchy exploration in both directions (base types and derived types)
+- Interface implementation discovery
+
+### Improved
+- Better type resolution using compilation symbols
+- Enhanced diagnostic information with categories
+- Support for finding types by simple name or fully qualified name
+- Comprehensive code block analysis including metrics
+
+### Technical Details
+- Implemented models for ImplementationInfo, TypeHierarchyInfo, DiagnosticInfo, and CodeBlockAnalysis
+- Added compilation-level analysis capabilities
+- Integrated SymbolFinder for finding implementations and derived types
+- Added cyclomatic complexity calculation based on control flow constructs
+- Fixed API compatibility issues with GetDiagnostics and Category property access
+- Improved error handling for missing solutions or types
 
 ---
 

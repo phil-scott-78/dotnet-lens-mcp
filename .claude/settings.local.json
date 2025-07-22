@@ -6,7 +6,11 @@
       "Bash(dotnet build)",
       "Bash(ls:*)",
       "Bash(dotnet restore:*)",
-      "Bash(dotnet build:*)"
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(dotnet clean:*)",
+      "Bash(sed:*)",
+      "Bash(python3:*)"
     ],
     "deny": []
   }

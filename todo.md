@@ -1,516 +1,211 @@
-# Roslyn MCP Server Implementation Plan
+# Annotation-Based Type Testing Strategy
 
-## Phase 1: Core Infrastructure & Basic Type Resolution
-**Goal**: Establish the foundation and implement basic type information retrieval
+## Problem Statement
+Current `GetTypeAtPositionTests.cs` uses hard-coded line/column positions which are extremely brittle. Any code changes break tests, making maintenance difficult and error-prone.
 
-### Tasks
-- [x] Implement MCP server boilerplate and protocol handling
-- [x] Create core models (SymbolInfo, MemberInfo, LocationInfo)
-- [x] Implement SolutionCache with basic caching functionality
-- [x] Implement WorkspaceResolver for solution discovery
-- [x] Create RoslynService base class with solution loading
-- [x] Implement `initialize_workspace` tool
-- [x] Implement `get_type_at_position` tool
+## Solution Overview
+Replace position-based testing with annotation-driven approach where source files contain inline test metadata as end-of-line comments.
 
-**Deliverables**: Working MCP server that can load solutions and resolve type information at cursor positions
+## Annotation Format
 
----
-
-## Phase 2: Member Discovery & Navigation
-**Goal**: Enable code navigation and member exploration
-
-### Tasks
-- [x] Implement `get_available_members` tool with filtering
-- [x] Add support for extension methods discovery
-- [x] Implement `find_symbol_definition` tool
-- [x] Implement `find_references` tool
-- [x] Add file system watching for cache invalidation
-- [x] Add comprehensive error handling with standardized error codes
-
-**Deliverables**: Full navigation capabilities with performance optimization
-
----
-
-## Phase 3: Advanced Analysis & Type Hierarchy
-**Goal**: Provide deeper code analysis and type relationship understanding
-
-### Tasks
-- [ ] Implement `find_implementations` tool
-- [ ] Implement `get_type_hierarchy` tool
-- [ ] Implement `analyze_code_block` tool with diagnostics
-- [ ] Implement `get_compilation_diagnostics` tool
-
-**Deliverables**: Complete type analysis and diagnostics capabilities
-
-
-
-# Roslyn MCP Server Specification
-
-## Overview
-
-Build an MCP (Model Context Protocol) server that provides semantic code intelligence for .NET projects using Roslyn. The server should expose tools that help AI assistants understand and navigate C# code by providing type information, member discovery, and code analysis capabilities.
-
-## Roslyn Service Design
-
-### SolutionCache Class
-
+### Basic Structure
 ```csharp
-public class SolutionCache
-{
-    private readonly ConcurrentDictionary<string, CachedSolution> _cache;
-    private readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(30);
-    
-    public class CachedSolution
-    {
-        public Solution Solution { get; set; }
-        public DateTime LastAccessed { get; set; }
-        public FileSystemWatcher Watcher { get; set; }
-    }
-    
-    public async Task<Solution> GetSolutionAsync(string solutionPath);
-    public void InvalidateSolution(string solutionPath);
-    public void StartFileWatching(string solutionPath);
-}
+var simpleString = "Hello, World!"; // @test:type target="simpleString" expect="string" kind="Local"
 ```
 
-### RoslynService Class
+### Properties
+- `target`: Text to locate on the line (identifier name)
+- `expect`: Expected `FullTypeName` value  
+- `kind`: Expected `Kind` value (Local, NamedType, Property, Parameter, etc.)
+- `generic`: Boolean for generic types (optional)
+- `args`: Comma-separated type arguments (optional)
+- `occurrence`: Which occurrence of target text (default: 1)
 
+### Complex Examples
 ```csharp
-public class RoslynService
-{
-    private readonly SolutionCache _solutionCache;
-    private readonly WorkspaceResolver _workspaceResolver;
-    
-    // Workspace management
-    public async Task<WorkspaceInfo> InitializeWorkspaceAsync(
-        string workingDirectory = null, string preferredSolution = null);
-    
-    public async Task<string> ResolveEffectiveSolutionPath(
-        string filePath, string explicitSolutionPath = null);
-    
-    // Tool implementations - note solutionPath is now optional
-    public async Task<SymbolInfo> GetTypeAtPositionAsync(
-        string filePath, int line, int column, string solutionPath = null);
-    
-    public async Task<IEnumerable<MemberInfo>> GetAvailableMembersAsync(
-        string filePath, int line, int column,
-        bool includeExtensionMethods = true, bool includeStatic = true,
-        string filter = null, string solutionPath = null);
-    
-    // Additional methods for each tool
-}
+// Generic collections
+List<string> stringList = new List<string>(); // @test:type target="stringList" expect="System.Collections.Generic.List<string>" kind="Local" generic="true" args="string"
+
+// Multiple type parameters  
+Dictionary<int, string> dict = new(); // @test:type target="dict" expect="System.Collections.Generic.Dictionary<int, string>" kind="Local" generic="true" args="int,string"
+
+// Nested generics
+List<Dictionary<string, int>> nested = new(); // @test:type target="nested" expect="System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, int>>" kind="Local" generic="true"
+
+// Method parameters
+public void Method(string text) // @test:type target="text" expect="string" kind="Parameter"
+
+// Type parameters
+public class Box<T> // @test:type target="T" expect="T" kind="TypeParameter"
+
+// Properties
+public string Name { get; set; } // @test:type target="Name" expect="string" kind="Property"
+
+// Multiple occurrences
+string first = "a", second = "b"; // @test:type target="second" expect="string" kind="Local" occurrence="2"
+
+// Nullable types
+int? nullable = 42; // @test:type target="nullable" expect="int?" kind="Local"
+
+// Arrays
+int[] array = new int[5]; // @test:type target="array" expect="int[]" kind="Local"
+
+// Tuples
+(int, string) tuple = (1, "one"); // @test:type target="tuple" expect="(int, string)" kind="Local"
+
+// Tasks
+Task<string> task = Task.FromResult("test"); // @test:type target="task" expect="System.Threading.Tasks.Task<string>" kind="Local" generic="true" args="string"
 ```
 
-### WorkspaceResolver Class
+## Implementation Plan
 
+### Phase 1: Core Infrastructure
+1. **AnnotationModels.cs** - Data structures for parsed annotations
+2. **AnnotationParser.cs** - Parse `@test:type` comments from source lines
+3. **TextPositionResolver.cs** - Convert target text to line/column positions
+4. **AnnotatedTestDiscovery.cs** - Scan files and generate test cases
+
+### Phase 2: Test Integration  
+5. **AnnotatedTypePositionTests.cs** - xUnit test class using annotations
+6. **TestBase classes** - Shared infrastructure for annotation-driven tests
+7. **File scanning** - Discover all annotated playground files
+
+### Phase 3: Migration & Validation
+8. **Add annotations** to existing playground files
+9. **Validate results** against current hard-coded tests  
+10. **Replace old tests** with annotation-based approach
+11. **Performance testing** with large codebases
+
+## File Structure
+```
+DotnetLensMcp.Tests/
+├── Infrastructure/
+│   ├── Annotations/
+│   │   ├── AnnotationModels.cs
+│   │   ├── AnnotationParser.cs  
+│   │   ├── TextPositionResolver.cs
+│   │   └── AnnotatedTestDiscovery.cs
+│   └── TestBase/
+│       └── AnnotationTestBase.cs
+├── Services/
+│   ├── AnnotatedTypePositionTests.cs (NEW)
+│   └── GetTypeAtPositionTests.cs (REPLACE/REMOVE)
+```
+
+## Detailed Implementation Steps
+
+### 1. AnnotationModels.cs
 ```csharp
-public class WorkspaceResolver
+public record TypeTestAnnotation
 {
-    private WorkspaceInfo _currentWorkspace;
-    private readonly Dictionary<string, string> _fileToSolutionCache;
-    
-    public async Task<string> FindSolutionForFileAsync(string filePath)
-    {
-        // 1. Check cache
-        if (_fileToSolutionCache.TryGetValue(filePath, out var cached))
-            return cached;
-            
-        // 2. Search upward from file
-        var solution = await SearchUpwardForSolution(filePath);
-        if (solution != null)
-        {
-            _fileToSolutionCache[filePath] = solution;
-            return solution;
-        }
-        
-        // 3. Use initialized workspace default
-        if (_currentWorkspace?.PrimarySolution != null)
-            return _currentWorkspace.PrimarySolution.Path;
-            
-        // 4. Search from current directory
-        return await SearchFromCurrentDirectory();
-    }
-    
-    private async Task<string> SearchUpwardForSolution(string filePath)
-    {
-        var directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
-        
-        while (!string.IsNullOrEmpty(directory))
-        {
-            // Check for .sln files
-            var slnFiles = Directory.GetFiles(directory, "*.sln");
-            if (slnFiles.Length == 1)
-                return slnFiles[0];
-                
-            // Check for .csproj if no .sln found
-            if (slnFiles.Length == 0)
-            {
-                var csprojFiles = Directory.GetFiles(directory, "*.csproj");
-                if (csprojFiles.Length == 1)
-                    return csprojFiles[0];
-            }
-            
-            // Move up one directory
-            directory = Directory.GetParent(directory)?.FullName;
-        }
-        
-        return null;
-    }
+    public string Target { get; init; } = "";
+    public string Expect { get; init; } = "";
+    public string Kind { get; init; } = "";
+    public bool? Generic { get; init; }
+    public string[]? Args { get; init; }
+    public int Occurrence { get; init; } = 1;
+    public string FilePath { get; init; } = "";
+    public int LineNumber { get; init; }
+    public string SourceLine { get; init; } = "";
 }
+
+public record PositionInfo(int Line, int Column);
 ```
 
-## MCP Tools Specification
+### 2. AnnotationParser.cs
+- Regex to extract `@test:type` annotations
+- Parse key="value" attribute pairs
+- Handle quoted strings with escaping
+- Validate required properties
 
-### 1. initialize_workspace
+### 3. TextPositionResolver.cs  
+- Find target text within source line
+- Handle multiple occurrences
+- Calculate precise character position
+- Cache results for performance
 
-**Description**: Initialize or detect the workspace and solution. Should be called once at the start of a session.
+### 4. AnnotatedTestDiscovery.cs
+- Scan playground source files
+- Extract all type test annotations
+- Resolve text positions to line/column
+- Generate test case metadata
 
-**Parameters**:
-- `workingDirectory` (string, optional): Directory to search from (defaults to current working directory)
-- `preferredSolution` (string, optional): Preferred solution if multiple are found
+### 5. AnnotatedTypePositionTests.cs
+- Dynamic test generation using `[Theory]` and `[MemberData]`
+- Load annotations from playground files
+- Execute GetTypeAtPositionAsync calls
+- Assert against annotation expectations
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "primarySolution": {
-      "path": "/path/to/MySolution.sln",
-      "name": "MySolution",
-      "projectCount": 5
-    },
-    "allSolutions": [
-      {
-        "path": "/path/to/MySolution.sln",
-        "projects": ["Core", "Web", "Tests"]
-      }
-    ],
-    "frameworkVersions": [".NET 8.0", ".NET Standard 2.1"],
-    "workspaceRoot": "/path/to/workspace"
-  }
-}
-```
+## Edge Cases to Handle
 
-### 2. get_type_at_position
+1. **Multiple occurrences** - Same identifier appears multiple times on line
+2. **Whitespace variations** - Spaces/tabs around target text
+3. **Comments in strings** - Ignore annotations inside string literals  
+4. **Escaped quotes** - Handle `\"` in expected type names
+5. **Line continuations** - Identifiers split across lines
+6. **Generic constraints** - Complex generic type expressions
+7. **Anonymous types** - Dynamic type name generation
+8. **Nullable annotations** - C# 8.0+ nullable reference types
+9. **Tuple names** - Named tuple elements
+10. **Dynamic types** - Runtime type resolution
 
-**Description**: Get type information at a specific position in the code.
+## Benefits
 
-**Parameters**:
-- `filePath` (string, required): Path to source file (absolute or relative to workspace)
-- `line` (int, required): 1-based line number
-- `column` (int, required): 1-based column number
-- `solutionPath` (string, optional): Override solution path (uses initialized workspace if not provided)
+### Maintainability
+- Tests automatically adapt to code changes
+- No more broken tests from simple refactoring
+- Easy to add new test cases
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "symbolName": "List<string>",
-    "fullTypeName": "System.Collections.Generic.List<System.String>",
-    "kind": "Class",
-    "assembly": "System.Collections",
-    "namespace": "System.Collections.Generic",
-    "documentation": "Represents a strongly typed list...",
-    "isGeneric": true,
-    "typeArguments": ["System.String"],
-    "baseType": "System.Object",
-    "interfaces": ["IList<T>", "ICollection<T>", "IEnumerable<T>"],
-    "resolvedFromSolution": "/path/to/MySolution.sln"
-  }
-}
-```
+### Readability  
+- Test expectations co-located with code
+- Clear annotation format
+- Self-documenting test scenarios
 
-### 3. get_available_members
+### Robustness
+- Text-based targeting less brittle than positions
+- Handles code formatting changes
+- Supports complex type scenarios
 
-**Description**: Get all accessible members at a specific code position.
+### Productivity
+- Faster test authoring
+- Easier debugging when tests fail
+- Better test coverage
 
-**Parameters**:
-- `filePath` (string, required): Path to source file
-- `line` (int, required): 1-based line number
-- `column` (int, required): 1-based column number
-- `includeExtensionMethods` (bool, optional, default: true)
-- `includeStatic` (bool, optional, default: true)
-- `filter` (string, optional): Filter by name prefix
-- `solutionPath` (string, optional): Override solution path
+## Validation Strategy
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "members": [
-      {
-        "name": "Add",
-        "kind": "Method",
-        "signature": "void Add(string item)",
-        "declaringType": "System.Collections.Generic.List<System.String>",
-        "accessibility": "public",
-        "documentation": "Adds an object to the end of the List<T>.",
-        "parameters": [
-          {
-            "name": "item",
-            "type": "string",
-            "documentation": "The object to be added"
-          }
-        ],
-        "isExtension": false,
-        "isStatic": false,
-        "isAsync": false
-      }
-    ],
-    "totalCount": 65,
-    "filteredCount": 1
-  }
-}
-```
+1. **Baseline comparison** - Run both old and new tests, compare results
+2. **Known edge cases** - Test complex scenarios manually first  
+3. **Performance testing** - Measure annotation parsing overhead
+4. **Cross-platform** - Verify behavior on different OS/file encodings
+5. **Large codebases** - Test with many annotated files
 
-### 3. find_symbol_definition
+## Rollout Plan
 
-**Description**: Find the definition location of a symbol.
+### Week 1: Infrastructure
+- Implement core annotation classes
+- Create basic parsing and position resolution
+- Unit tests for infrastructure components
 
-**Parameters**:
-- `solutionPath` (string, required)
-- `filePath` (string, required)
-- `line` (int, required)
-- `column` (int, required)
+### Week 2: Integration
+- Build test discovery and runner
+- Create first annotation-based tests
+- Validate against existing test results
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "definitionLocation": {
-      "filePath": "Services/UserService.cs",
-      "line": 15,
-      "column": 17,
-      "endLine": 15,
-      "endColumn": 28
-    },
-    "symbolInfo": {
-      "name": "GetUserAsync",
-      "kind": "Method",
-      "containingType": "UserService"
-    },
-    "sourceText": "public async Task<User> GetUserAsync(int id)"
-  }
-}
-```
+### Week 3: Migration  
+- Add annotations to all playground files
+- Replace hard-coded tests
+- Performance optimization and edge case handling
 
-### 4. find_references
+### Week 4: Validation & Cleanup
+- Comprehensive testing of new approach
+- Remove old brittle tests
+- Documentation and examples
 
-**Description**: Find all references to a symbol.
+## Success Criteria
 
-**Parameters**:
-- `solutionPath` (string, required)
-- `filePath` (string, required)
-- `line` (int, required)
-- `column` (int, required)
-- `includeDeclaration` (bool, optional, default: false)
-- `maxResults` (int, optional, default: 100)
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "references": [
-      {
-        "filePath": "Controllers/UserController.cs",
-        "line": 23,
-        "column": 25,
-        "lineText": "var user = await _userService.GetUserAsync(id);",
-        "kind": "MethodCall"
-      }
-    ],
-    "totalCount": 5,
-    "hasMore": false
-  }
-}
-```
-
-### 5. find_implementations
-
-**Description**: Find all implementations of an interface or derived types.
-
-**Parameters**:
-- `solutionPath` (string, required)
-- `typeName` (string, required): Fully qualified type name
-- `findDerivedTypes` (bool, optional, default: true)
-- `findInterfaceImplementations` (bool, optional, default: true)
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "implementations": [
-      {
-        "typeName": "SqlUserRepository",
-        "fullTypeName": "MyApp.Data.SqlUserRepository",
-        "filePath": "Data/SqlUserRepository.cs",
-        "line": 8,
-        "kind": "Class",
-        "implementsDirectly": true
-      }
-    ]
-  }
-}
-```
-
-
-### 6. get_method_overloads
-
-**Description**: Get all overloads of a method.
-
-**Parameters**:
-- `solutionPath` (string, required)
-- `filePath` (string, required)
-- `line` (int, required)
-- `column` (int, required)
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "overloads": [
-      {
-        "signature": "Task<User> GetUserAsync(int id)",
-        "parameters": [{"name": "id", "type": "int"}],
-        "documentation": "Gets a user by ID"
-      },
-      {
-        "signature": "Task<User> GetUserAsync(string email)",
-        "parameters": [{"name": "email", "type": "string"}],
-        "documentation": "Gets a user by email"
-      }
-    ]
-  }
-}
-```
-
-### 7. get_type_hierarchy
-
-**Description**: Get inheritance hierarchy for a type.
-
-**Parameters**:
-- `solutionPath` (string, required)
-- `typeName` (string, required): Fully qualified type name
-- `direction` (string, optional): "Base", "Derived", or "Both" (default: "Both")
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "baseTypes": [
-      {
-        "typeName": "BaseRepository",
-        "fullTypeName": "MyApp.Data.BaseRepository",
-        "assembly": "MyApp.Data"
-      }
-    ],
-    "derivedTypes": [
-      {
-        "typeName": "CachedUserRepository",
-        "fullTypeName": "MyApp.Data.CachedUserRepository",
-        "assembly": "MyApp.Data"
-      }
-    ],
-    "interfaces": [
-      {
-        "typeName": "IUserRepository",
-        "fullTypeName": "MyApp.Core.IUserRepository"
-      }
-    ]
-  }
-}
-```
-
-## Usage Patterns for Claude Code
-
-### Typical Session Flow
-
-1. **Initial Setup** (Claude Code would likely do this automatically):
-```
-→ initialize_workspace()
-← Returns primary solution and workspace info
-```
-
-2. **Exploring Code** (no solution path needed):
-```
-→ get_type_at_position(filePath: "Controllers/UserController.cs", line: 25, column: 30)
-← Returns type info using auto-discovered solution
-
-→ get_available_members(filePath: "Controllers/UserController.cs", line: 25, column: 30)
-← Returns available members
-```
-
-
-### Auto-Discovery Logic
-
-The resolution order for finding the appropriate solution:
-
-1. **Explicit solution path** (if provided in the tool call)
-2. **File-based discovery** (search upward from the file path)
-3. **Cached workspace** (from initialize_workspace)
-4. **Current directory search** (as fallback)
-
-### Benefits
-
-- **Reduces friction**: Claude Code doesn't need to track solution paths
-- **Natural workflow**: Just provide the file being worked on
-- **Smart defaults**: Works correctly 95% of the time without explicit paths
-- **Override available**: Can still specify solution when needed
-
-### Performance Optimization
-
-1. **Solution Caching**:
-   - Cache loaded solutions for 30 minutes
-   - Use file system watchers to invalidate cache on changes
-   - Implement lazy loading of documents
-
-2. **Cancellation Support**:
-   - All async operations should accept CancellationToken
-   - Implement timeouts for long-running operations (default: 30 seconds)
-
-3. **Memory Management**:
-   - Limit number of cached solutions (default: 5)
-   - Implement LRU eviction for solution cache
-   - Dispose of Roslyn workspaces properly
-
-### Error Handling
-
-1. Return standardized error responses:
-```json
-{
-  "success": false,
-  "error": {
-    "code": "SOLUTION_NOT_FOUND",
-    "message": "Solution file not found: MyApp.sln",
-    "details": {
-      "searchedPath": "/path/to/MyApp.sln"
-    }
-  }
-}
-```
-
-2. Common error codes:
-   - `SOLUTION_NOT_FOUND`
-   - `FILE_NOT_FOUND`
-   - `INVALID_POSITION`
-   - `COMPILATION_FAILED`
-   - `TIMEOUT`
-   - `SYMBOL_NOT_FOUND`
-
-
-## Dependencies
-
-```xml
-<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.8.0" />
-<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
-<PackageReference Include="Microsoft.Build.Locator" Version="1.6.10" />
-<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.0" />
-<PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
-```
+1. ✅ All existing test scenarios covered by annotations
+2. ✅ New annotation tests pass with same results as old tests
+3. ✅ Easy to add new test cases by adding annotations
+4. ✅ Tests remain stable during code refactoring
+5. ✅ Performance acceptable for large codebases
+6. ✅ Clear documentation and examples for future maintainers
