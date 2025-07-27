@@ -17,6 +17,14 @@ This MCP server lets AI assistants understand C# code deeply by providing semant
 
 ### From NuGet (Recommended)
 
+#### Install with Claude Code
+
+```bash
+claude mcp add dotnet-lens dnx -- "dotnet-lens-mcp@0.1.0-beta" "--yes"
+```
+
+#### Manual Configuration
+
 Configure your AI assistant to use the published package:
 
 ```json
