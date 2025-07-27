@@ -36,7 +36,7 @@ namespace DotnetLensMcp.Tests.Infrastructure.Annotations
                     var fileCases = await DiscoverTestCasesFromFileAsync(filePath);
                     testCases.AddRange(fileCases);
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     // ignored
                 }

@@ -16,7 +16,7 @@ namespace DotnetLensMcp.Playground.Basic
         // Test: Simple variable declaration (var keyword)
         public void VarDeclarations()
         {
-            var simpleString = "Hello, World!"; // @test:type target="simpleString" expect="string?" kind="Local"
+            var simpleString = "Hello, World!"; // @test:type target="simpleString" expect="string" kind="Local"
             var simpleInt = 42; // @test:type target="simpleInt" expect="int" kind="Local"
             var simpleDouble = 3.14; // @test:type target="simpleDouble" expect="double" kind="Local"
             var simpleBool = true; // @test:type target="simpleBool" expect="bool" kind="Local"
