@@ -14,7 +14,7 @@ builder.Services.AddSingleton<RoslynService>();
 // Add the MCP services: the transport to use (stdio) and the tools to register.
 builder.Services
     .AddMcpServer()
-    .WithStdioServerTransport()
+    .WithHttpTransport()
     .WithTools<RoslynTools>();
 
 // Configure all logs to go to stderr (stdout is used for the MCP protocol messages).

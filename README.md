@@ -1,85 +1,69 @@
-# MCP Server
+# dotnet-lens-mcp
 
-This README was created using the C# MCP server project template. It demonstrates how you can easily create an MCP server using C# and publish it as a NuGet package.
+A Model Context Protocol (MCP) server that brings Roslyn-powered code intelligence to your AI assistant. 
 
-See [aka.ms/nuget/mcp/guide](https://aka.ms/nuget/mcp/guide) for the full guide.
+## What does it do?
 
-Please note that this template is currently in an early preview stage. If you have feedback, please take a [brief survey](http://aka.ms/dotnet-mcp-template-survey).
+This MCP server lets AI assistants understand C# code deeply by providing semantic analysis tools:
 
-## Checklist before publishing to NuGet.org
+- **Type resolution** - Hover over any variable or expression to see its actual type
+- **Find definitions** - Jump to where symbols are defined, just like F12 in VS
+- **Find references** - See everywhere a symbol is used across your solution
+- **Explore APIs** - Get IntelliSense-style member listings at any code position
+- **Navigate inheritance** - Find implementations, derived types, and base classes
+- **Check build errors** - Get real compiler diagnostics for your code
 
-- Test the MCP server locally using the steps below.
-- Update the package metadata in the .csproj file, in particular the `<PackageId>`.
-- Update `.mcp/server.json` to declare your MCP server's inputs.
-  - See [configuring inputs](https://aka.ms/nuget/mcp/guide/configuring-inputs) for more details.
-- Pack the project using `dotnet pack`.
+## Getting Started
 
-The `bin/Release` directory will contain the package file (.nupkg), which can be [published to NuGet.org](https://learn.microsoft.com/nuget/nuget-org/publish-a-package).
+### From NuGet (Recommended)
 
-## Developing locally
-
-To test this MCP server from source code (locally) without using a built MCP server package, you can configure your IDE to run the project directly using `dotnet run`.
-
-```json
-{
-  "servers": {
-    "roslyn-mcp": {
-      "type": "stdio",
-      "command": "dotnet",
-      "args": [
-        "run",
-        "--project",
-        "<PATH TO PROJECT DIRECTORY>"
-      ]
-    }
-  }
-}
-```
-
-## Testing the MCP Server
-
-Once configured, you can ask Copilot Chat for a random number, for example, `Give me 3 random numbers`. It should prompt you to use the `get_random_number` tool on the `roslyn-mcp` MCP server and show you the results.
-
-## Publishing to NuGet.org
-
-1. Run `dotnet pack -c Release` to create the NuGet package
-2. Publish to NuGet.org with `dotnet nuget push bin/Release/*.nupkg --api-key <your-api-key> --source https://api.nuget.org/v3/index.json`
-
-## Using the MCP Server from NuGet.org
-
-Once the MCP server package is published to NuGet.org, you can configure it in your preferred IDE. Both VS Code and Visual Studio use the `dnx` command to download and install the MCP server package from NuGet.org.
-
-- **VS Code**: Create a `<WORKSPACE DIRECTORY>/.vscode/mcp.json` file
-- **Visual Studio**: Create a `<SOLUTION DIRECTORY>\.mcp.json` file
-
-For both VS Code and Visual Studio, the configuration file uses the following server definition:
+Configure your AI assistant to use the published package:
 
 ```json
 {
   "servers": {
-    "roslyn-mcp": {
+    "dotnet-lens": {
       "type": "stdio",
       "command": "dnx",
-      "args": [
-        "<your package ID here>",
-        "--version",
-        "<your package version here>",
-        "--yes"
-      ]
+      "args": ["dotnet-lens-mcp", "--version", "0.1.0-beta", "--yes"]
     }
   }
 }
 ```
 
-## More information
+### From Source
 
-.NET MCP servers use the [ModelContextProtocol](https://www.nuget.org/packages/ModelContextProtocol) C# SDK. For more information about MCP:
+For development or testing:
 
-- [Official Documentation](https://modelcontextprotocol.io/)
-- [Protocol Specification](https://spec.modelcontextprotocol.io/)
-- [GitHub Organization](https://github.com/modelcontextprotocol)
+```json
+{
+  "servers": {
+    "dotnet-lens": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["run", "--project", "/path/to/DotnetLensMcp"]
+    }
+  }
+}
+```
 
-Refer to the VS Code or Visual Studio documentation for more information on configuring and using MCP servers:
+## Usage
 
-- [Use MCP servers in VS Code (Preview)](https://code.visualstudio.com/docs/copilot/chat/mcp-servers)
-- [Use MCP servers in Visual Studio (Preview)](https://learn.microsoft.com/visualstudio/ide/mcp-servers)
+Once configured, your AI assistant gains these capabilities:
+
+1. **First, initialize the workspace** - The AI will scan for .sln or .csproj files
+2. **Then use any analysis tools** - Get type info, find references, check for errors, etc.
+
+Example prompts:
+- "Find all places where this method is called"
+- "Show me what methods I can call on this object"
+- "What classes implement this interface?"
+
+## Requirements
+
+- .NET 9.0 or later
+- A C# project or solution to analyze
+
+## Feedback & Issues
+
+Found a bug? Not surprised! Please open an issue on our [GitHub repository](https://github.com/phil-scott-78/dotnet-lens-mcp).

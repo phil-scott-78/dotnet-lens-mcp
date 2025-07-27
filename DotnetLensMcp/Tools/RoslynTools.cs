@@ -8,8 +8,7 @@ using ModelContextProtocol.Server;
 namespace DotnetLensMcp.Tools;
 
 public class RoslynTools(
-    RoslynService roslynService,
-    ILogger<RoslynTools> logger)
+    RoslynService roslynService)
 {
     [McpServerTool] 
     [Description("Initialize C# or .NET workspace and solution detection. MUST be called first before using any other C# or .NET tools. Use when starting analysis of any C# or .NET project, working with .csproj, .sln, or .cs files, or before performing any code analysis operations.")]

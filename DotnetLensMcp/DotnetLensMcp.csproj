@@ -17,6 +17,11 @@
     <PackageVersion>0.1.0-beta</PackageVersion>
     <PackageTags>AI; MCP; server; stdio; roslyn; csharp; dotnet</PackageTags>
     <Description>An MCP server providing semantic code intelligence for .NET projects using Roslyn.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/phil-scott-78/dotnet-lens-mcp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/phil-scott-78/dotnet-lens-mcp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <Copyright>Copyright © 2025 Phil Scott</Copyright>
   </PropertyGroup>
 
   <!-- Include additional files for browsing the MCP server. -->
@@ -35,6 +40,7 @@
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.7" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.7" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.7" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="0.3.0-preview.3" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>
 
